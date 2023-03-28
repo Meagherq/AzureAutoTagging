@@ -21,68 +21,92 @@ from string import Template
 #     })
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
+
+    # Turn response body into Python object
     req_body = req.get_json()
 
+    # Grab the first object in the response body
     body = req_body[0]
 
+    # The data property holds the main payload. For validation, this contains the validation code
     data = body['data']
 
+    # Validation Process: Creation of EventGrid subscription will send a validationCode.
+    # Subscription is validated when the validationCode is returned with a 200 status code response.
     validationCode = any
-
     try:
         validationCode = data['validationCode']
         return func.HttpResponse(json.dumps({"validationResponse": validationCode}))
     except:
-        print("Error")
+        print("Already validated")
 
+    # Resource Management SDK Appsettings
     clientId = os.environ.get("TAG_CLIENT_ID", None)
     clientSecret = os.environ.get("TAG_CLIENT_SECRET", None)
     tenantId = os.environ.get("TAG_TENANT_ID", None)
     authority = os.environ.get("TAG_AUTHORITY", None)
     subscriptionId = os.environ.get("TAG_SUBSCRIPTION_ID", None)
+
+    # CosmosDB SDK Appsettings
     url = os.environ.get("TAG_COSMOS_URL", None)
     key = os.environ.get("TAG_COSMOS_KEY", None)
     databaseName = os.environ.get("TAG_COSMOS_DATABASE_NAME", None)
     containerName = os.environ.get("TAG_COSMOS_CONTAINER_NAME", None)
 
+    # Instantiate Resource Management Client to query and update tags
     resource_client = ResourceManagementClient(
         credential=ClientSecretCredential(tenantId, clientId, clientSecret, authority=authority),
         subscription_id=subscriptionId,
         api_version="2020-10-01"
     )
 
+    # Instantiate empty tag
     existingData = TagsResource
     appIdTag = any
 
+    # Query for existing tags
     try:
+        # Filter out invalid operations
         if 'operationName' in data:
             if 'Microsoft.Resources/tags/write' in data['operationName']:
-                return func.HttpResponse("Ignore tag write operation")
-
+                return func.HttpResponse("Ignore tag write operation", 200)
+        
+        # Get tags using resourceUri scope
         existingData = resource_client.tags.get_at_scope(
         data['resourceUri'])
         appIdTag = existingData.properties.tags["appId"]
     except:
         print("Resource does not support tags")
-        return func.HttpResponse("Resource does not support tags or does not contain AppId tag")
 
+        # If the request does not have an appId tag or does not support tags the function returns.
+        return func.HttpResponse("Resource does not support tags or does not contain AppId tag", 200)
+
+    # Instantiate CosmosDB Client using the url and access key
     cosmosClient = CosmosClient(url, key)
 
+    # Intantiate CosmosDB Database Client using CosmosDB Client
     database = cosmosClient.get_database_client(databaseName)
+
+    # Instantiate CosmosDB Container Client using CosmosDB Database Client
     container = database.get_container_client(containerName)
 
+    # Instantiate empty dictionary to hold queried tagData
     cosmosTagData = dict[str, any]
 
+    # Create query template where $n1 is the existing AppId tag value
     queryTemplate = Template('SELECT * FROM c where c.id = "$n1"')
 
+    # Query for complex tags from CosmosDB using the existing AppId tag
     for item in container.query_items(
         query=queryTemplate.substitute(n1 = appIdTag),
         enable_cross_partition_query=True,
     ):
+        # Copy query response into cosmosTagData dictionary
         cosmosTagData = item.copy()
 
+    # Upsert the resource tags for the given resourceUri using the queried tags
     resource_client.tags.create_or_update_at_scope(data['resourceUri'], { "operation": "create", "properties": {
         "tags": { "appId": appIdTag, "appName": cosmosTagData.get('appName'), "owner": cosmosTagData.get('owner'), "ctime": cosmosTagData.get('ctime') }
     }})
 
-    return func.HttpResponse(f"Hello. This HTTP triggered function executed successfully.")
+    return func.HttpResponse(f"Hello. This HTTP triggered function executed successfully.", 200)
