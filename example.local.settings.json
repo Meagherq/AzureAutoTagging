@@ -4,6 +4,17 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "CosmosDBConnectionString": "",
-    "BlobStorageConnectionString": ""
+    "BlobStorageConnectionString": "",
+    "TAG_BLOB_CONNECTION_STRING": "",
+    "TAG_BLOB_CONTAINER_NAME": "",
+    "TAG_COSMOS_URL": "",
+    "TAG_COSMOS_KEY": "",
+    "TAG_COSMOS_DATABASE_NAME": "",
+    "TAG_COSMOS_CONTAINER_NAME": "",
+    "TAG_CLIENT_ID": "",
+    "TAG_CLIENT_SECRET": "",
+    "TAG_TENANT_ID": "",
+    "TAG_AUTHORITY": "",
+    "TAG_SUBSCRIPTION_ID": ""
   }
 }
