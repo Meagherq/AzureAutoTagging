@@ -4,7 +4,6 @@ import logging
 from azure.storage.blob import BlobServiceClient
 import os
 from azure.cosmos import CosmosClient
-import datetime
 
 def main(myblob: func.InputStream):
 
@@ -52,6 +51,6 @@ def main(myblob: func.InputStream):
             # Split each row into the set of columns
             columns = item.split(",")
             # Perform to upsert to CosmosDB using the CosmosDB Container Client
-            container.upsert_item({"id": columns[0], "appName": columns[1], "owner": columns[2], "ctime": datetime.datetime.now().ctime() })
+            container.upsert_item({"id": columns[0], "appName": columns[1], "owner": columns[2] })
 
     logging.info('Python Blob trigger function processed %s', myblob.name)

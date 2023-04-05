@@ -7,6 +7,8 @@ from azure.mgmt.resource.resources.v2022_09_01.models import TagsResource
 from azure.cosmos import CosmosClient
 import azure.functions as func
 from string import Template
+import datetime
+
 
 # EventGrid can use an HttpTrigger or a classic EventGridTrigger
 # If you want to use a EventGridTrigger
@@ -123,7 +125,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
                             # Create the resource tags for the given resourceUri using the queried tags from CosmosDB
                             resource_client.tags.create_or_update_at_scope(resource['id'], { "operation": "create", "properties": {
-                            "tags": { "appId": appIdTagForResource, "appName": cosmosTagDataForResource.get('appName'), "owner": cosmosTagDataForResource.get('owner'), "ctime": cosmosTagDataForResource.get('ctime') }}})
+                            "tags": { "appId": appIdTagForResource, "appName": cosmosTagDataForResource.get('appName'), "owner": cosmosTagDataForResource.get('owner'), "ctime": datetime.datetime.now().ctime() }}})
                         except:
                             print("Deployment resource does not support tags or tags were not successfully added")
 
@@ -157,7 +159,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Create the resource tags for the given resourceUri using the queried tags from CosmosDB
         resource_client.tags.create_or_update_at_scope(data['resourceUri'], { "operation": "create", "properties": {
-        "tags": { "appId": appIdTag, "appName": cosmosTagData.get('appName'), "owner": cosmosTagData.get('owner'), "ctime": cosmosTagData.get('ctime') }
+        "tags": { "appId": appIdTag, "appName": cosmosTagData.get('appName'), "owner": cosmosTagData.get('owner'), "ctime": datetime.datetime.now().ctime() }
         }})
     except:
         print("Tag updates were unsuccessful for: " + data['resourceUri'])
