@@ -4,12 +4,17 @@ import logging
 from azure.storage.blob import BlobServiceClient
 import os
 from azure.cosmos import CosmosClient
+import smtplib
+from smtplib import SMTPException
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 def main(myblob: func.InputStream):
 
     # Blob Storage SDK Appsettings 
     blob_connection_string = os.environ.get("TAG_BLOB_CONNECTION_STRING", None)
-    blob_container_name = os.environ.get("TAG_COSMOS_URL", None)
+    blob_container_name = os.environ.get("TAG_BLOB_CONTAINER_NAME", None)
 
     # CosmosDB SDK Appsettings
     url = os.environ.get("TAG_COSMOS_URL", None)
@@ -44,13 +49,44 @@ def main(myblob: func.InputStream):
     # Instantiate CosmosDB Container Client using CosmosDB Database Client
     container = database.get_container_client(containerName)
 
+    try:
     # Iterate through each entry and upsert to CosmosDB
-    for item in strContent:
-        # Filter out lines that don't have any content
-        if len(item) > 0:
-            # Split each row into the set of columns
-            columns = item.split(",")
-            # Perform to upsert to CosmosDB using the CosmosDB Container Client
-            container.upsert_item({"id": columns[0], "appName": columns[1], "owner": columns[2] })
+        for item in strContent:
+            # Filter out lines that don't have any content
+            if len(item) > 0:
+                # Split each row into the set of columns
+                columns = item.split(",")
+                # Perform to upsert to CosmosDB using the CosmosDB Container Client
+                container.upsert_item({"id": columns[0], "appName": columns[1], "owner": columns[2] })
+    except:
+        sendmail(myblob.name.split('/')[1])
+        print("mail sent unsuccessful")
 
+    sendmail(myblob.name)
     logging.info('Python Blob trigger function processed %s', myblob.name)
+
+def sendmail(blobName):
+
+    # Email Appsettings
+    sender_email_address = os.environ.get("TAG_SENDER_EMAIL_ADDRESS", None)
+    sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
+    receipient_email_address = os.environ.get("TAG_RECEIPIENT_EMAIL_ADDRESS", None)
+    smtp_server = os.environ.get("TAG_SMTP_SERVER", None)
+    smtp_port = os.environ.get("TAG_SMTP_PORT", None)
+    
+    msg = MIMEMultipart()
+    msg['From'] = sender_email_address
+    msg['To'] = receipient_email_address
+    msg['Subject'] = 'Unsuccessful CosmosDB CSV Update'
+    message = 'CSV tag data update was unsuccessful for Filename: ' + blobName
+    msg.attach(MIMEText(message))
+    mailserver = smtplib.SMTP(smtp_server, smtp_port)
+    # identify ourselves to smtp client
+    mailserver.ehlo()
+    # secure our email with tls encryption
+    mailserver.starttls()
+    # re-identify ourselves as an encrypted connection
+    mailserver.ehlo()
+    mailserver.login(sender_email_address, sender_email_password)
+    mailserver.sendmail(msg['From'], msg['To'], msg.as_string())
+    mailserver.quit()

@@ -8,6 +8,11 @@ from azure.cosmos import CosmosClient
 import azure.functions as func
 from string import Template
 import datetime
+import smtplib
+from smtplib import SMTPException
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 
 # EventGrid can use an HttpTrigger or a classic EventGridTrigger
@@ -110,22 +115,27 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                             if 'appId' in existingDataForResource.properties.tags:
                                 appIdTagForResource = existingDataForResource.properties.tags["appId"]
 
-                            # Check if we have already applied complex tags
-                            if 'appName' in existingDataForResource.properties.tags or 'owner' in existingDataForResource.properties.tags:
-                                print("Tag updates are already in place for deployed resources")
-                                return func.HttpResponse("Tag updates are already in place for deployed resources", status_code=400)  
+                                # Check if we have already applied complex tags
+                                if 'appName' in existingDataForResource.properties.tags or 'owner' in existingDataForResource.properties.tags:
+                                    print("Tag updates are already in place for deployed resource")
+                                    raise Exception("Tag updates are alrady in place for deployed resource")
+                                    # Email error
+                                    # return func.HttpResponse("Tag updates are already in place for deployed resources", status_code=400)
 
-                            # Query for complex tags from CosmosDB using the existing AppId tag
-                            for item in container.query_items(
-                                query=queryTemplate.substitute(n1 = appIdTagForResource),
-                                enable_cross_partition_query=True,
-                            ):
-                                # Copy query response into cosmosTagDataForResource dictionary
-                                cosmosTagDataForResource = item.copy()
-
-                            # Create the resource tags for the given resourceUri using the queried tags from CosmosDB
-                            resource_client.tags.create_or_update_at_scope(resource['id'], { "operation": "create", "properties": {
-                            "tags": { "appId": appIdTagForResource, "appName": cosmosTagDataForResource.get('appName'), "owner": cosmosTagDataForResource.get('owner'), "ctime": datetime.datetime.now().ctime() }}})
+                                # Query for complex tags from CosmosDB using the existing AppId tag
+                                for item in container.query_items(
+                                    query=queryTemplate.substitute(n1 = appIdTagForResource),
+                                    enable_cross_partition_query=True,
+                                ):
+                                    # Copy query response into cosmosTagDataForResource dictionary
+                                    cosmosTagDataForResource = item.copy()
+                                try:
+                                    # Create the resource tags for the given resourceUri using the queried tags from CosmosDB
+                                    resource_client.tags.create_or_update_at_scope(resource['id'], { "operation": "create", "properties": {
+                                    "tags": { "appId": appIdTagForResource, "appName": cosmosTagDataForResource.get('appName'), "owner": cosmosTagDataForResource.get('owner'), "bax-ctime": datetime.datetime.now().ctime() }}})
+                                except:
+                                    sendmail(resource['id'])
+                                    print("mail sent successfull")
                         except:
                             print("Deployment resource does not support tags or tags were not successfully added")
 
@@ -144,9 +154,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     return func.HttpResponse("Tag updates are already in place for resource", status_code=400)  
     except:
         print("Resource does not support tags: " + data['resourceUri'])
-
         # If the request does not have an appId tag or does not support tags the function returns.
-        return func.HttpResponse("Resource does not support tags or does not contain AppId tag", status_code=400)
 
     # Query for complex tags from CosmosDB using the existing AppId tag
     for item in container.query_items(
@@ -158,14 +166,44 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # Create the resource tags for the given resourceUri using the queried tags from CosmosDB
+        # TODO fix time for resource creation
         resource_client.tags.create_or_update_at_scope(data['resourceUri'], { "operation": "create", "properties": {
-        "tags": { "appId": appIdTag, "appName": cosmosTagData.get('appName'), "owner": cosmosTagData.get('owner'), "ctime": datetime.datetime.now().ctime() }
+        "tags": { "appId": appIdTag, "appName": cosmosTagData.get('appName'), "owner": cosmosTagData.get('owner'), "bax-ctime": datetime.datetime.now().ctime() }
         }})
     except:
         print("Tag updates were unsuccessful for: " + data['resourceUri'])
+        sendmail(data['resourceUri'])
+        print("mail sent successfull")
         # Proper status code response prevent excessive retry
         return func.HttpResponse("Tag updates were unsuccessful for: " + data['resourceUri'], status_code=400)
 
     print("Tag updates were successful for: " + data['resourceUri'])
     # Proper status code response prevent excessive retry
     return func.HttpResponse("Tag updates were successful for: " + data['resourceUri'], status_code=200)
+
+def sendmail(resourceUri):
+
+    # Email Appsettings
+    sender_email_address = os.environ.get("TAG_SENDER_EMAIL_ADDRESS", None)
+    sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
+    receipient_email_address = os.environ.get("TAG_RECEIPIENT_EMAIL_ADDRESS", None)
+    smtp_server = os.environ.get("TAG_SMTP_SERVER", None)
+    smtp_port = os.environ.get("TAG_SMTP_PORT", None)
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email_address
+    msg['To'] = receipient_email_address
+    msg['Subject'] = 'Unsuccessful Tag Update Operation'
+    message = 'Tag update was unsuccessful for ResourceId: ' + resourceUri
+    msg.attach(MIMEText(message))
+    mailserver = smtplib.SMTP(smtp_server, smtp_port)
+    # identify ourselves to smtp client
+    mailserver.ehlo()
+    # secure our email with tls encryption
+    mailserver.starttls()
+    # re-identify ourselves as an encrypted connection
+    mailserver.ehlo()
+    mailserver.login(sender_email_address, sender_email_password)
+    mailserver.sendmail(msg['From'], msg['To'], msg.as_string())
+    mailserver.quit()
+
