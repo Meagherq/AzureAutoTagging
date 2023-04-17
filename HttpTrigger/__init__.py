@@ -185,7 +185,7 @@ def sendmail(resourceUri):
 
     # Email Appsettings
     sender_email_address = os.environ.get("TAG_SENDER_EMAIL_ADDRESS", None)
-    sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
+    # sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
     receipient_email_address = os.environ.get("TAG_RECEIPIENT_EMAIL_ADDRESS", None)
     smtp_server = os.environ.get("TAG_SMTP_SERVER", None)
     smtp_port = os.environ.get("TAG_SMTP_PORT", None)
@@ -203,7 +203,7 @@ def sendmail(resourceUri):
     mailserver.starttls()
     # re-identify ourselves as an encrypted connection
     mailserver.ehlo()
-    mailserver.login(sender_email_address, sender_email_password)
+    # mailserver.login(sender_email_address, sender_email_password)
     mailserver.sendmail(msg['From'], msg['To'], msg.as_string())
     mailserver.quit()
 

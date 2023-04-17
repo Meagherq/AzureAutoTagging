@@ -62,14 +62,14 @@ def main(myblob: func.InputStream):
         sendmail(myblob.name.split('/')[1])
         print("mail sent unsuccessful")
 
-    sendmail(myblob.name)
+    sendmail(myblob.name.split('/')[1])
     logging.info('Python Blob trigger function processed %s', myblob.name)
 
 def sendmail(blobName):
 
     # Email Appsettings
     sender_email_address = os.environ.get("TAG_SENDER_EMAIL_ADDRESS", None)
-    sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
+    # sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
     receipient_email_address = os.environ.get("TAG_RECEIPIENT_EMAIL_ADDRESS", None)
     smtp_server = os.environ.get("TAG_SMTP_SERVER", None)
     smtp_port = os.environ.get("TAG_SMTP_PORT", None)
@@ -87,6 +87,6 @@ def sendmail(blobName):
     mailserver.starttls()
     # re-identify ourselves as an encrypted connection
     mailserver.ehlo()
-    mailserver.login(sender_email_address, sender_email_password)
+    # mailserver.login(sender_email_address, sender_email_password)
     mailserver.sendmail(msg['From'], msg['To'], msg.as_string())
     mailserver.quit()
