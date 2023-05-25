@@ -102,10 +102,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 # Check if error context is has entries.
                 if errorDict:
                     response = {
-                        "Description": "Some tag updates were unsuccessful for group deployment: " + data['resourceUri'],
-                        "Context": json.dumps(errorDict)
+                        "Description": "Some tag updates were unsuccessful for group deployment: " + data['resourceUri']
+                        #"Context": json.dumps(errorDict)
                     }
-                    logging.info(json.dumps(response))
+                    #logging.info(json.dumps(response))
                     return func.HttpResponse(json.dumps(response), status_code=200)
                 
                 # Else if all updates were successful. Error context is empty here.
@@ -134,8 +134,10 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
     
     try:
         creationDate = resourceClient.resources.get_by_id(resourceUri, '2023-02-01').additional_properties['systemData']['createdAt']
+        createdBy = resourceClient.resources.get_by_id(resourceUri, '2023-02-01').additional_properties['systemData']['createdBy']
     except:
         creationDate = "N/A"
+        createdBy = "N/A"
 
     existingTagsWithInvariantCase: dict[str, str]
     try:
@@ -169,9 +171,11 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
     
     # Apply complex tags from CosmosDB
     try:
-        existingTags.properties.tags["Appname"] = cosmosTagData.get('appName')
-        existingTags.properties.tags["Owner"] = cosmosTagData.get('owner')
+        existingTags.properties.tags["bax-appname"] = cosmosTagData.get('appName')
+        existingTags.properties.tags["bax-appid"] = cosmosTagData.get('appId')
+        existingTags.properties.tags["bax-owner"] = cosmosTagData.get('owner')
         existingTags.properties.tags["bax-ctime"] = creationDate
+        existingTags.properties.tags["bax-creator"] = createdBy
 
         # Update tags at scope
         resourceClient.tags.create_or_update_at_scope(resourceUri, { "operation": "create", "properties": {
