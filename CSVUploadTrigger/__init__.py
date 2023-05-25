@@ -1,3 +1,4 @@
+import json
 import logging
 import azure.functions as func
 import logging
@@ -10,26 +11,57 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 
-def main(myblob: func.InputStream):
+from cryptography.hazmat.primitives.asymmetric.padding import (
+    OAEP,
+    MGF1,
+)
+from cryptography.hazmat.primitives.hashes import SHA1
+from azure.identity import ClientSecretCredential
+
+from azure.keyvault.keys.crypto import CryptographyClient, KeyWrapAlgorithm
+
+from azure.storage.blob import BlobServiceClient
+
+def main(req: func.HttpRequest) -> func.HttpResponse:
+
+    # Turn response body into Python object
+    req_body = req.get_json()
+
+    # Grab the first object in the response body
+    body = req_body[0]
+
+    # The data property holds the main payload. For validation, this contains the validation code
+    data = body['data']
+
+    # Validation Process: Creation of EventGrid subscription will send a validationCode.
+    # Subscription is validated when the validationCode is returned with a 200 status code response.
+    if 'validationCode' in data:
+        return func.HttpResponse(json.dumps({"validationResponse": data['validationCode']}), status_code=200)
 
     # Blob Storage SDK Appsettings 
-    blob_connection_string = os.environ.get("TAG_BLOB_CONNECTION_STRING", None)
-    blob_container_name = os.environ.get("TAG_BLOB_CONTAINER_NAME", None)
+    blob_connection_string = os.environ.get("BLOB_CONNECTION_STRING", None)
+    blob_container_name = os.environ.get("BLOB_CONTAINER_NAME", None)
+    clientId = os.environ.get("CLIENT_ID", None)
+    clientSecret = os.environ.get("CLIENT_SECRET", None)
+    tenantId = os.environ.get("TENANT_ID", None)
 
     # CosmosDB SDK Appsettings
-    url = os.environ.get("TAG_COSMOS_URL", None)
-    key = os.environ.get("TAG_COSMOS_KEY", None)
-    databaseName = os.environ.get("TAG_COSMOS_DATABASE_NAME", None)
-    containerName = os.environ.get("TAG_COSMOS_CONTAINER_NAME", None)
+    url = os.environ.get("COSMOS_URL", None)
+    key = os.environ.get("COSMOS_KEY", None)
+    databaseName = os.environ.get("COSMOS_DATABASE_NAME", None)
+    containerName = os.environ.get("COSMOS_CONTAINER_NAME", None)
+
+    credential = ClientSecretCredential(tenantId, clientId, clientSecret)
 
     # Instatinate Blob Storage client using connection string
-    blob_service_client = BlobServiceClient.from_connection_string(blob_connection_string)
+    blob_service_client = BlobServiceClient.from_connection_string(blob_connection_string, credential=credential)
 
     # Instantiate Blob Storage Container Client using Blob Storage Client
     container_client = blob_service_client.get_container_client(blob_container_name)
-
+    # container_client.key_encryption_key = kek
+    urlContents = data['url'].split('/')
     # Instantiate Blob Storage Blob Client using Blob Storage Container Client
-    blob_client = container_client.get_blob_client(myblob.name.split('/')[1])
+    blob_client = container_client.get_blob_client(urlContents[len(urlContents)-1])
 
     # Download Blob as byte content 
     data = blob_client.download_blob()
@@ -59,20 +91,21 @@ def main(myblob: func.InputStream):
                 # Perform to upsert to CosmosDB using the CosmosDB Container Client
                 container.upsert_item({"id": columns[0], "appName": columns[1], "owner": columns[2] })
     except:
-        sendmail(myblob.name.split('/')[1])
-        print("mail sent unsuccessful")
-
-    sendmail(myblob.name.split('/')[1])
-    logging.info('Python Blob trigger function processed %s', myblob.name)
+        #sendmail(data.name.split('/')[1])
+        logging.info("mail sent unsuccessful")
+    logging.info('Tag updates were processed for deployment resources')
+    return func.HttpResponse("Tag updates were processed for deployment resources", status_code=200)
+    #sendmail(data.name.split('/')[1])
+    
 
 def sendmail(blobName):
 
     # Email Appsettings
-    sender_email_address = os.environ.get("TAG_SENDER_EMAIL_ADDRESS", None)
-    # sender_email_password = os.environ.get("TAG_SENDER_EMAIL_PASSWORD", None)
-    receipient_email_address = os.environ.get("TAG_RECEIPIENT_EMAIL_ADDRESS", None)
-    smtp_server = os.environ.get("TAG_SMTP_SERVER", None)
-    smtp_port = os.environ.get("TAG_SMTP_PORT", None)
+    sender_email_address = os.environ.get("SENDER_EMAIL_ADDRESS", None)
+    # sender_email_password = os.environ.get("SENDER_EMAIL_PASSWORD", None)
+    receipient_email_address = os.environ.get("RECEIPIENT_EMAIL_ADDRESS", None)
+    smtp_server = os.environ.get("SMTP_SERVER", None)
+    smtp_port = os.environ.get("SMTP_PORT", None)
     
     msg = MIMEMultipart()
     msg['From'] = sender_email_address

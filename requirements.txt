@@ -7,3 +7,5 @@ azure.identity
 azure.mgmt.resource
 azure.cosmos
 azure.storage.blob
+azure.keyvault.keys
+azure.keyvault.secrets
