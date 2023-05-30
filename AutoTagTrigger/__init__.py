@@ -90,28 +90,30 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 
                 # Create empty error context in case of failed tag operations.
                 # This allows us to log any errors while continuing to tag additional resources.
-                errorDict = dict[str, any]
+                errorDict = {}
                 # Iterate through outputResources, applying tags to any valid resources
                 for resource in outputResources:
                     try:
                         updateTags(resource['id'], container, resource_client)
                     except Exception as e:
                         # Update error context with unsuccessful tag update information
-                        errorDict[resource['id']] = e.message
+                        errorDict[resource['id']] = e.args[0]
 
                 # Check if error context is has entries.
-                if errorDict:
-                    response = {
-                        "Description": "Some tag updates were unsuccessful for group deployment: " + data['resourceUri']
-                        #"Context": json.dumps(errorDict)
-                    }
-                    #logging.info(json.dumps(response))
-                    return func.HttpResponse(json.dumps(response), status_code=200)
+                try:
+                    if errorDict.items():
+                        serializedErrorDict = str(errorDict)
+                        logging.info(serializedErrorDict)
+                        return func.HttpResponse(serializedErrorDict, status_code=200)
                 
-                # Else if all updates were successful. Error context is empty here.
-                else:
-                    logging.info("All tag updates were successful for group deployment: " + data['resourceUri'])
-                    return func.HttpResponse("All tag updates were successful for group deployment: " + data['resourceUri'], status_code=200)
+                    # Else if all updates were successful. Error context is empty here.
+                    else:
+                        logging.info("All tag updates were successful for group deployment: " + data['resourceUri'])
+                        return func.HttpResponse("All tag updates were successful for group deployment: " + data['resourceUri'], status_code=200)
+                except Exception as e:
+                    logging.info("Error dictionary could be be rendered for: " + data['resourceUri'])
+                    return func.HttpResponse("Error dictionary could be be rendered for: " + data['resourceUri'], status_code=400)
+
 
             # Update tags for a resource creation using a Service Provider such as 'Microsoft.StorageAccounts/write'
             else: 
@@ -121,8 +123,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     return func.HttpResponse("Tag updates were successful for: " + data['resourceUri'], status_code=200)
                 except Exception as e:
                         # Use error raised from updateTags to log and return the error
-                        logging.error("Error updating tags for " + data['resourceUri'] + " : " + json.dumps(e))
-                        return func.HttpResponse("Error updating tags for " + data['resourceUri'] + " : " + json.dumps(e), status_code=400)
+                        logging.error("Error updating tags for " + data['resourceUri'] + " : " + e.args[0])
+                        return func.HttpResponse("Error updating tags for " + data['resourceUri'] + " : " + str({
+                        {
+                            "Description": "Tag updates were unsuccessful for: " + data['resourceUri'],
+                            "Context": e.args[0]
+                        }}), status_code=400)
 
 def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceManagementClient):
     existingTags: TagsResource
@@ -130,7 +136,7 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
     try: 
         existingTags = resourceClient.tags.get_at_scope(resourceUri)
     except: 
-        raise Exception("Tags are not support for: " + resourceUri)
+        raise Exception("Tags are not support")
     
     try:
         creationDate = resourceClient.resources.get_by_id(resourceUri, '2023-02-01').additional_properties['systemData']['createdAt']
@@ -144,10 +150,10 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
         # Create cloned dictionary with uppercase keys for comparison
         existingTagsWithInvariantCase = {k.upper():v for k,v in existingTags.properties.tags.items()}
     except:
-        raise Exception("Could not compare tags for: " + resourceUri)
+        raise Exception("Could not compare tags")
 
     if 'APPID' not in existingTagsWithInvariantCase:
-        raise Exception("Valid AppId tag not found for: " + resourceUri)
+        raise Exception("Valid AppId tag not found")
 
     appIdTagValue = existingTagsWithInvariantCase['APPID']
 
@@ -167,12 +173,12 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
             cosmosTagData = item.copy()
 
     except Exception as e:
-        raise Exception("Cosmos could not query for AppId:" + appIdTagValue + " - " + e.message)
+        raise Exception("Cosmos could not query for AppId:" + appIdTagValue)
     
     # Apply complex tags from CosmosDB
     try:
         existingTags.properties.tags["bax-appname"] = cosmosTagData.get('appName')
-        existingTags.properties.tags["bax-appid"] = cosmosTagData.get('appId')
+        existingTags.properties.tags["bax-appid"] = appIdTagValue
         existingTags.properties.tags["bax-owner"] = cosmosTagData.get('owner')
         existingTags.properties.tags["bax-ctime"] = creationDate
         existingTags.properties.tags["bax-creator"] = createdBy
@@ -182,7 +188,7 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
           "tags": existingTags.properties.tags
         }})
     except Exception as e:
-        raise Exception("Tag update error for resourceUri:" + resourceUri + " - " + e.message)
+        raise Exception("Tag update error")
 
     
 def sendmail(resourceUri):
