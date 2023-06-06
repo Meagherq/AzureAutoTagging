@@ -124,11 +124,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception as e:
                         # Use error raised from updateTags to log and return the error
                         logging.error("Error updating tags for " + data['resourceUri'] + " : " + e.args[0])
-                        return func.HttpResponse("Error updating tags for " + data['resourceUri'] + " : " + str({
-                        {
-                            "Description": "Tag updates were unsuccessful for: " + data['resourceUri'],
-                            "Context": e.args[0]
-                        }}), status_code=400)
+                        return func.HttpResponse("Error updating tags for " + data['resourceUri'] + " : " + e.args[0], status_code=400)
 
 def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceManagementClient):
     existingTags: TagsResource
@@ -136,14 +132,31 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
     try: 
         existingTags = resourceClient.tags.get_at_scope(resourceUri)
     except: 
-        raise Exception("Tags are not support")
-    
+        raise Exception("Tags are not supported")
+    creationDate = 'NA'
+    createdBy = 'NA'
     try:
-        creationDate = resourceClient.resources.get_by_id(resourceUri, '2023-02-01').additional_properties['systemData']['createdAt']
-        createdBy = resourceClient.resources.get_by_id(resourceUri, '2023-02-01').additional_properties['systemData']['createdBy']
-    except:
-        creationDate = "N/A"
-        createdBy = "N/A"
+        existingResource: any
+        try:
+            existingResource = resourceClient.resources.get_by_id(resourceUri, '2021-11-01')
+        except: 
+            existingResource = resourceClient.resources.get_by_id(resourceUri, '2021-04-01')
+        
+        if 'systemData' in existingResource.additional_properties:
+            if 'createdAt' in existingResource.additional_properties['systemData']:
+                creationDate = existingResource.additional_properties['systemData']['createdAt']
+            else:
+                creationDate = 'NA'
+            if 'createdBy' in existingResource.additional_properties['systemData']:
+                createdBy = existingResource.additional_properties['systemData']['createdBy']
+            else:
+                createdBy = 'NA'
+
+        if 'timeCreated' in existingResource.properties:
+            creationDate = existingResource.properties['timeCreated']
+        
+    except Exception as e:
+        logging.info("Error obtained creation properties: " + str(e.args[0]))
 
     existingTagsWithInvariantCase: dict[str, str]
     try:
