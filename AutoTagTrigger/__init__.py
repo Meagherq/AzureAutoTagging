@@ -141,6 +141,10 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
             existingResource = resourceClient.resources.get_by_id(resourceUri, '2021-11-01')
         except: 
             existingResource = resourceClient.resources.get_by_id(resourceUri, '2021-04-01')
+
+        if (existingResource.type == "Microsoft.Network/networkInterfaces"):
+            parentVirtualMachine = existingResource.properties['virtualMachine']['id']
+            existingResource = resourceClient.resources.get_by_id(parentVirtualMachine, '2021-11-01')
         
         if 'systemData' in existingResource.additional_properties:
             if 'createdAt' in existingResource.additional_properties['systemData']:
