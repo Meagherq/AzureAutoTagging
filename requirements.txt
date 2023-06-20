@@ -5,6 +5,7 @@
 azure-functions
 azure.identity
 azure.mgmt.resource
+azure.mgmt.monitor
 azure.cosmos
 azure.storage.blob
 azure.keyvault.keys

@@ -8,11 +8,13 @@ from azure.cosmos import CosmosClient
 import azure.functions as func
 from string import Template
 import datetime
+from datetime import datetime, timedelta
 import smtplib
 from smtplib import SMTPException
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from azure.mgmt.monitor import MonitorManagementClient
 
 
 # EventGrid can use an HttpTrigger or a classic EventGridTrigger
@@ -63,6 +65,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         api_version="2020-10-01"
     )
 
+    monitor_client = MonitorManagementClient(
+        ClientSecretCredential(tenantId, clientId, clientSecret, authority=authority),
+        subscriptionId
+    )
+
     # Instantiate CosmosDB Client using the url and access key
     cosmosClient = CosmosClient(url, key)
 
@@ -94,7 +101,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 # Iterate through outputResources, applying tags to any valid resources
                 for resource in outputResources:
                     try:
-                        updateTags(resource['id'], container, resource_client)
+                        updateTags(resource['id'], container, resource_client, monitor_client)
                     except Exception as e:
                         # Update error context with unsuccessful tag update information
                         errorDict[resource['id']] = e.args[0]
@@ -118,7 +125,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             # Update tags for a resource creation using a Service Provider such as 'Microsoft.StorageAccounts/write'
             else: 
                 try:
-                    updateTags(data['resourceUri'], container, resource_client)
+                    updateTags(data['resourceUri'], container, resource_client, monitor_client)
                     logging.info("Tag updates were successful for: " + data['resourceUri'])
                     return func.HttpResponse("Tag updates were successful for: " + data['resourceUri'], status_code=200)
                 except Exception as e:
@@ -126,7 +133,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         logging.error("Error updating tags for " + data['resourceUri'] + " : " + e.args[0])
                         return func.HttpResponse("Error updating tags for " + data['resourceUri'] + " : " + e.args[0], status_code=400)
 
-def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceManagementClient):
+def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceManagementClient, monitor_client: MonitorManagementClient):
     existingTags: TagsResource
 
     try: 
@@ -158,7 +165,14 @@ def updateTags(resourceUri: str, cosmosClient: any, resourceClient: ResourceMana
 
         if 'timeCreated' in existingResource.properties:
             creationDate = existingResource.properties['timeCreated']
-        
+        #monitor_client.activity_logs.list("eventTimestamp ge '2014-07-16T04:36:37.6407898Z' and eventTimestamp le '2014-07-20T04:36:37.6407898Z' and resourceUri eq {resourceUri}")
+        #formattedCreationDate = datetime.fromisoformat(creationDate)
+        filterQuery = "eventTimestamp ge '%s' and eventTimestamp le '%s' and resourceUri eq '%s'"%((datetime.utcnow() + timedelta(hours=-1)).isoformat()[:-3] + 'Z' , (datetime.utcnow() + timedelta(hours=1)).isoformat()[:-3] + 'Z', resourceUri)
+        result = monitor_client.activity_logs.list(filterQuery)
+        for log in result:
+            if 'bax-creator' not in existingTags.properties.tags or 'NA' in existingTags.properties.tags['bax-creator']:
+                createdBy = log.caller
+
     except Exception as e:
         logging.info("Error obtained creation properties: " + str(e.args[0]))
 
